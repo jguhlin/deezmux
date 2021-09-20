@@ -1,5 +1,5 @@
 [package]
-name = "demux_by_header"
+name = "deezmux"
 version = "0.1.0"
 edition = "2018"
 
@@ -13,3 +13,5 @@ indicatif = "0.16.2"
 triple_accel = "0.4.0"
 rayon = "1.5.1"
 twox-hash = "1.6.1"
+clap = { version = "3.0.0-beta.4", features = ["yaml", "color", "suggestions", "unicode_help"] }
+flate2 = { version = "1.0.22", features = ["zlib-ng-compat"], default-features = false }

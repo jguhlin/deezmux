@@ -55,7 +55,8 @@ impl FastqSplitter {
 
     pub fn match_barcodes<R: Read>(&self, reader: R) {
         // -> Vec<(String, String, String)>{
-        let mut lines = BufReader::new(reader).byte_lines();
+        let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
+        // let mut lines = BufReader::new(reader).byte_lines();
         let mut counts = HashMap::new();
 
         loop {
@@ -85,7 +86,8 @@ impl FastqSplitter {
 
             let sequence = match lines.next() {
                 Some(Ok(line)) => line.clone(),
-                _ => panic!("Invalid FASTQ"),
+                Some(Err(e)) => panic!("Invalid FASTQ: {}", e),
+                _ => panic!("Out of data!")
             };
 
             match lines.next() {

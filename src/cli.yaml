@@ -1,0 +1,19 @@
+name: deezmux
+version: "0.1"
+about: Fast demultiplexing of Illumina files where the barcode IDs are in the header
+author: Joseph Guhlin <joseph.guhlin@gmail.com>
+
+settings:
+    - ArgRequiredElseHelp
+    - ColoredHelp
+
+args:
+    - barcode_file:
+        about: barcode file
+        index: 1
+        required: true
+    - read_files:
+        about: Read file(s) to demultiplex
+        index: 2
+        multiple_values: true
+        required: true
