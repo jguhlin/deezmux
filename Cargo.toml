@@ -1,0 +1,15 @@
+[package]
+name = "demux_by_header"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytelines = "2.2.2"
+bstr = "0.2.16"
+simdutf8 = { version = "0.1.3" }
+indicatif = "0.16.2"
+triple_accel = "0.4.0"
+rayon = "1.5.1"
+twox-hash = "1.6.1"
