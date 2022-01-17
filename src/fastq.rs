@@ -87,7 +87,7 @@ impl FastqSplitter {
             let sequence = match lines.next() {
                 Some(Ok(line)) => line.clone(),
                 Some(Err(e)) => panic!("Invalid FASTQ: {}", e),
-                _ => panic!("Out of data!")
+                _ => panic!("Out of data!"),
             };
 
             match lines.next() {
@@ -140,7 +140,6 @@ impl FastqSplitter {
 
                 let e = id_counts.entry(min_id.clone()).or_insert(0);
                 *e += count;
-
             } else {
                 unassigned_reads += count;
             }

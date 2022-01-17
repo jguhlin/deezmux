@@ -1,9 +1,13 @@
 [package]
 name = "deezmux"
-version = "0.1.0"
-edition = "2018"
+version = "0.2.0"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# This is magic
+[profile.dev.package."*"]
+opt-level = 3
 
 [dependencies]
 bytelines = "2.2.2"
@@ -13,5 +17,6 @@ indicatif = "0.16.2"
 triple_accel = "0.4.0"
 rayon = "1.5.1"
 twox-hash = "1.6.1"
-clap = { version = "3.0.0-beta.4", features = ["yaml", "color", "suggestions", "unicode_help"] }
+clap = { version = "3.0.8", features = ["derive", "color", "suggestions"] }
 flate2 = { version = "1.0.22", features = ["zlib-ng-compat"], default-features = false }
+hashbrown = "0.12.0"
