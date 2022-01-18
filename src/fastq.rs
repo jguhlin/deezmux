@@ -1,16 +1,18 @@
 use bytelines::*;
+use crossbeam::channel::bounded;
+use crossbeam::thread;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use hashbrown::HashMap;
 use simdutf8::basic::from_utf8;
 use triple_accel::*;
+use twox_hash::xxh3::RandomHashBuilder64;
 
-use hashbrown::HashMap;
 // use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
-use twox_hash::xxh3::RandomHashBuilder64;
-
-use flate2::Compression;
-use flate2::write::GzEncoder;
+// use std::thread;
 
 /* pub struct FastqEntry<'fq> {
     pub id: &'fq [u8],
@@ -59,61 +61,69 @@ impl FastqSplitter {
         self
     }
 
-/*     pub fn with_basename(mut self, basename: String) -> FastqSplitter {
+    /*     pub fn with_basename(mut self, basename: String) -> FastqSplitter {
         self.basename = basename;
         self twox_hash::xxh3::RandomHashBuilder64
     } */
 
-    pub fn match_barcodes<R: Read>(&self, reader: R) -> HashMap<String, String, RandomHashBuilder64> {
-        // -> Vec<(String, String, String)>{
-        let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
-        // let mut lines = BufReader::new(reader).byte_lines();
+    pub fn match_barcodes<R: Read + Send + Sync>(
+        &self,
+        reader: R,
+    ) -> HashMap<String, String, RandomHashBuilder64> {
+        let (sender, receiver) = bounded(100000);
 
-        let mut assigned_barcodes: HashMap<String, String, RandomHashBuilder64> = Default::default();
-
+        let mut assigned_barcodes: HashMap<String, String, RandomHashBuilder64> =
+            Default::default();
         let mut counts: HashMap<String, usize, RandomHashBuilder64> = Default::default();
 
-        loop {
-            let header;
-            let id;
+        thread::scope(|s| {
+            let mut lines = BufReader::with_capacity(8 * 1024 * 1024, reader).byte_lines();
 
-            match lines.next() {
-                Some(Ok(line)) => {
-                    header = from_utf8(line)
-                        .expect("FASTQ Header line is not valid UTF-8")
-                        .clone();
-                    let n = header.len();
+            s.spawn(move |_| {
+                let mut header;
+                let mut id;
 
-                    id = header[n - 17..n].to_string().clone();
-                    let count = match counts.get_mut(&id) {
-                        Some(count) => count,
-                        None => {
-                            counts.insert(id.clone(), 0);
-                            counts.get_mut(&id).unwrap()
+                loop {
+                    match lines.next() {
+                        Some(Ok(line)) => {
+                            header = from_utf8(line).expect("FASTQ Header line is not valid UTF-8");
+                            let n = header.len();
+                            id = header[n - 17..n].to_string();
+                            sender.send(Some(id)).expect("Error sending");
+                        }
+                        _ => {
+                            sender.send(None).expect("Error sending complete");
+                            break;
                         }
                     };
 
-                    *count += 1;
+                    lines
+                        .next()
+                        .expect("Invalid FASTQ File")
+                        .expect("Invalid FASTQ File");
+                    lines
+                        .next()
+                        .expect("Invalid FASTQ File")
+                        .expect("Invalid FASTQ File");
+                    lines
+                        .next()
+                        .expect("Invalid FASTQ File")
+                        .expect("Invalid FASTQ File");
                 }
-                _ => break,
-            };
+            });
 
-            let _sequence = match lines.next() {
-                Some(Ok(line)) => line.clone(),
-                Some(Err(e)) => panic!("Invalid FASTQ: {}", e),
-                _ => panic!("Out of data!"),
-            };
-
-            match lines.next() {
-                Some(Ok(_)) => (),
-                _ => panic!("Invalid FASTQ"),
-            };
-
-            let _scores = match lines.next() {
-                Some(Ok(line)) => line.clone(),
-                _ => panic!("Invalid FASTQ"),
-            };
-        }
+            while let Ok(Some(id)) = receiver.recv() {
+                let count = match counts.get_mut(&id) {
+                    Some(count) => count,
+                    None => {
+                        counts.insert(id.clone(), 0);
+                        counts.get_mut(&id).unwrap()
+                    }
+                };
+                *count += 1;
+            }
+        })
+        .unwrap();
 
         let mut hash_vec: Vec<(&String, &usize)> = counts.iter().collect();
         hash_vec.sort_by(|a, b| b.1.cmp(a.1));
@@ -204,10 +214,10 @@ impl FastqSplitter {
         fs::create_dir_all(&output_directory).expect("Unable to create directory");
 
         for (k, i) in assigned_barcodes {
-            let file = BufWriter::new(
-                GzEncoder::new(File::create(format!("{}/{}_{}.fq.gz", output_directory, i, suffix)).unwrap(),
-                Compression::default()),
-            );
+            let file = BufWriter::new(GzEncoder::new(
+                File::create(format!("{}/{}_{}.fq.gz", output_directory, i, suffix)).unwrap(),
+                Compression::default(),
+            ));
             files.insert(k.clone(), file);
         }
 
