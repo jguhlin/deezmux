@@ -72,7 +72,7 @@ fn main() {
             ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {eta}"),
         );
-        let barcodes = fqs.match_barcodes(MultiGzDecoder::new(pb.wrap_read(&file_pb)));
+        let barcodes = fqs.match_barcodes(BufReader::new(MultiGzDecoder::new(BufReader::new(pb.wrap_read(&file_pb)))));
 
         let file_pb = File::open(file).expect("Unable to open file");
         let pb = ProgressBar::new(file_pb.metadata().unwrap().len());
@@ -82,7 +82,7 @@ fn main() {
         );
 
         fqs.split_by_barcodes(
-            MultiGzDecoder::new(pb.wrap_read(file_pb)),
+            BufReader::new(MultiGzDecoder::new(BufReader::new(pb.wrap_read(&file_pb)))),
             r,
             "output".to_string(),
             barcodes,

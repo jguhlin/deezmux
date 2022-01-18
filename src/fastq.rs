@@ -2,11 +2,12 @@ use bytelines::*;
 use simdutf8::basic::from_utf8;
 use triple_accel::*;
 
-// use hashbrown::HashMap;
-use std::collections::HashMap;
+use hashbrown::HashMap;
+// use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
+use twox_hash::xxh3::RandomHashBuilder64;
 
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -60,17 +61,17 @@ impl FastqSplitter {
 
 /*     pub fn with_basename(mut self, basename: String) -> FastqSplitter {
         self.basename = basename;
-        self
+        self twox_hash::xxh3::RandomHashBuilder64
     } */
 
-    pub fn match_barcodes<R: Read>(&self, reader: R) -> HashMap<String, String> {
+    pub fn match_barcodes<R: Read>(&self, reader: R) -> HashMap<String, String, RandomHashBuilder64> {
         // -> Vec<(String, String, String)>{
         let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
         // let mut lines = BufReader::new(reader).byte_lines();
 
-        let mut assigned_barcodes = HashMap::new();
+        let mut assigned_barcodes: HashMap<String, String, RandomHashBuilder64> = Default::default();
 
-        let mut counts = HashMap::new();
+        let mut counts: HashMap<String, usize, RandomHashBuilder64> = Default::default();
 
         loop {
             let header;
@@ -127,7 +128,7 @@ impl FastqSplitter {
         for (barcode, count) in hash_vec {
             let read_barcodes: Vec<&str> = barcode.split("+").collect();
 
-            let mut scores = HashMap::new();
+            let mut scores: HashMap<String, u32, RandomHashBuilder64> = Default::default();
 
             for (bc0, bc1, id, _r1_file, _r2_file) in self.barcodes.iter() {
                 let dist1 = levenshtein(read_barcodes[0].as_bytes(), bc0.as_bytes());
@@ -194,7 +195,7 @@ impl FastqSplitter {
         reader: R,
         suffix: String,
         output_directory: String,
-        assigned_barcodes: HashMap<String, String>,
+        assigned_barcodes: HashMap<String, String, RandomHashBuilder64>,
     ) {
         let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
 
