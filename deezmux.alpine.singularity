@@ -1,0 +1,20 @@
+Bootstrap: docker
+From: alpine:latest
+
+%labels
+
+    MAINTAINER "Joseph Guhlin"
+    VERSION "Deezmux 18 Jan 2022"
+
+%post
+    apk add rustup git build-base cmake
+    rustup-init -y
+    source $HOME/.cargo/env
+    rustup update   
+    git clone https://github.com/jguhlin/deezmux
+    cd deezmux
+    cargo build --release
+    cp target/release/deezmux /usr/bin/
+
+%runscript
+    exec /usr/bin/deezmux "$@"

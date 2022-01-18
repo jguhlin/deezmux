@@ -57,6 +57,8 @@ fn main() {
     let barcode_file = &args.barcode_file;
     let files = &args.read_files;
 
+    println!("Parsing barcode file: {}", barcode_file);
+
     let barcodes = parse_barcode_file(barcode_file);
 
     let fqs = FastqSplitter::new().with_barcodes(barcodes).with_mm(2, 2);
