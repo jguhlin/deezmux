@@ -77,7 +77,7 @@ impl FastqSplitter {
         let mut counts: HashMap<String, usize, RandomHashBuilder64> = Default::default();
 
         thread::scope(|s| {
-            let mut lines = BufReader::with_capacity(8 * 1024 * 1024, reader).byte_lines();
+            let mut lines = BufReader::new(reader).byte_lines();
 
             s.spawn(move |_| {
                 let mut header;
@@ -200,58 +200,75 @@ impl FastqSplitter {
         assigned_barcodes
     }
 
-    pub fn split_by_barcodes<R: Read>(
+    pub fn split_by_barcodes<R: Read + Send + Sync>(
         &self,
         reader: R,
         suffix: String,
         output_directory: String,
-        assigned_barcodes: HashMap<String, String, RandomHashBuilder64>,
+        barcodes: Vec<(String, String, String, String, String)>,
     ) {
-        let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
+        let (sender, receiver) = bounded(8192);
 
         let mut files = HashMap::new();
-
         fs::create_dir_all(&output_directory).expect("Unable to create directory");
 
-        for (k, i) in assigned_barcodes {
+        let mut assigned_barcodes: HashMap<String, String, RandomHashBuilder64> =
+        Default::default();
+
+        for (_, _, id, _, _) in barcodes {
             let file = BufWriter::new(GzEncoder::new(
-                File::create(format!("{}/{}_{}.fq.gz", output_directory, i, suffix)).unwrap(),
+                File::create(format!("{}/{}_{}.fq.gz", output_directory, id, suffix)).unwrap(),
                 Compression::default(),
             ));
-            files.insert(k.clone(), file);
+            files.insert(id.clone(), file);
         }
 
-        loop {
-            let header;
-            let id;
+        let mut assigned_barcodes: HashMap<String, String, RandomHashBuilder64> =
+            Default::default();
 
-            match lines.next() {
-                Some(Ok(line)) => {
-                    header = from_utf8(line)
-                        .expect("FASTQ Header line is not valid UTF-8")
-                        .clone();
-                    let n = header.len();
+        thread::scope(|s| {
+            let mut lines = BufReader::new(reader).byte_lines();
 
-                    id = header[n - 17..n].to_string().clone();
+            s.spawn(move |_| {
+                loop {
+                    let header;
+                    let id;
+        
+                    match lines.next() {
+                        Some(Ok(line)) => {
+                            header = from_utf8(line)
+                                .expect("FASTQ Header line is not valid UTF-8")
+                                .clone();
+                            let n = header.len();
+        
+                            id = header[n - 17..n].to_string().clone();
 
-                    if let Some(mut file) = files.get_mut(&id) {
-                        file.write_all(line).expect("Unable to write output file");
-                        writeln!(&mut file).expect("Unable to write output file");
-                        file.write_all(lines.next().unwrap().unwrap()).unwrap();
-                        writeln!(&mut file).expect("Unable to write output file");
-                        file.write_all(lines.next().unwrap().unwrap()).unwrap();
-                        writeln!(&mut file).expect("Unable to write output file");
-                        file.write_all(lines.next().unwrap().unwrap()).unwrap();
-                        writeln!(&mut file).expect("Unable to write output file");
-                    } else {
-                        println!("ID {} Not Found!", id);
-                    }
+                            let entry = 
+        
+                            if let Some(mut file) = files.get_mut(&id) {
+                                file.write_all(line).expect("Unable to write output file");
+                                writeln!(&mut file).expect("Unable to write output file");
+                                file.write_all(lines.next().unwrap().unwrap()).unwrap();
+                                writeln!(&mut file).expect("Unable to write output file");
+                                file.write_all(lines.next().unwrap().unwrap()).unwrap();
+                                writeln!(&mut file).expect("Unable to write output file");
+                                file.write_all(lines.next().unwrap().unwrap()).unwrap();
+                                writeln!(&mut file).expect("Unable to write output file");
+                            } else {
+                                println!("ID {} Not Found!", id);
+                            }
+                        }
+                        _ => {
+                            break;
+                        }
+                    };
                 }
-                _ => {
-                    break;
-                }
-            };
-        }
+
+            });
+
+        });
+        
+        
     }
 }
 
