@@ -2,21 +2,27 @@ use bytelines::*;
 use simdutf8::basic::from_utf8;
 use triple_accel::*;
 
+// use hashbrown::HashMap;
 use std::collections::HashMap;
-use std::io::{BufReader, Read};
+use std::fs;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Read, Write};
 
-pub struct FastqEntry<'fq> {
+use flate2::Compression;
+use flate2::write::GzEncoder;
+
+/* pub struct FastqEntry<'fq> {
     pub id: &'fq [u8],
     pub scores: &'fq [u8],
     pub sequence: &'fq [u8],
-}
+} */
 
 pub struct FastqSplitter {
-    files: Vec<String>,
+    // files: Vec<String>,
     mm1: u32,
     mm2: u32,
-    barcodes: Vec<(String, String, String)>,
-    basename: String,
+    barcodes: Vec<(String, String, String, String, String)>,
+    // basename: String,
 }
 
 impl FastqSplitter {
@@ -24,18 +30,19 @@ impl FastqSplitter {
 
     pub fn new() -> FastqSplitter {
         FastqSplitter {
-            files: Vec::new(),
+            // files: Vec::new(),
             mm1: 2,
             mm2: 2,
             barcodes: Vec::new(),
-            basename: "output".to_string(),
+            // basename: "output".to_string(),
         }
     }
 
+    /*
     pub fn with_files(mut self, files: Vec<String>) -> FastqSplitter {
         self.files = files;
-        self
-    }
+      self
+    } */
 
     pub fn with_mm(mut self, mm1: u32, mm2: u32) -> FastqSplitter {
         self.mm1 = mm1;
@@ -43,20 +50,26 @@ impl FastqSplitter {
         self
     }
 
-    pub fn with_barcodes(mut self, barcodes: Vec<(String, String, String)>) -> FastqSplitter {
+    pub fn with_barcodes(
+        mut self,
+        barcodes: Vec<(String, String, String, String, String)>,
+    ) -> FastqSplitter {
         self.barcodes = barcodes;
         self
     }
 
-    pub fn with_basename(mut self, basename: String) -> FastqSplitter {
+/*     pub fn with_basename(mut self, basename: String) -> FastqSplitter {
         self.basename = basename;
         self
-    }
+    } */
 
-    pub fn match_barcodes<R: Read>(&self, reader: R) {
+    pub fn match_barcodes<R: Read>(&self, reader: R) -> HashMap<String, String> {
         // -> Vec<(String, String, String)>{
         let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
         // let mut lines = BufReader::new(reader).byte_lines();
+
+        let mut assigned_barcodes = HashMap::new();
+
         let mut counts = HashMap::new();
 
         loop {
@@ -84,7 +97,7 @@ impl FastqSplitter {
                 _ => break,
             };
 
-            let sequence = match lines.next() {
+            let _sequence = match lines.next() {
                 Some(Ok(line)) => line.clone(),
                 Some(Err(e)) => panic!("Invalid FASTQ: {}", e),
                 _ => panic!("Out of data!"),
@@ -95,7 +108,7 @@ impl FastqSplitter {
                 _ => panic!("Invalid FASTQ"),
             };
 
-            let scores = match lines.next() {
+            let _scores = match lines.next() {
                 Some(Ok(line)) => line.clone(),
                 _ => panic!("Invalid FASTQ"),
             };
@@ -116,7 +129,7 @@ impl FastqSplitter {
 
             let mut scores = HashMap::new();
 
-            for (bc0, bc1, id) in self.barcodes.iter() {
+            for (bc0, bc1, id, _r1_file, _r2_file) in self.barcodes.iter() {
                 let dist1 = levenshtein(read_barcodes[0].as_bytes(), bc0.as_bytes());
                 let dist2 = levenshtein(read_barcodes[1].as_bytes(), bc1.as_bytes());
 
@@ -132,19 +145,25 @@ impl FastqSplitter {
 
             // for i in scores_vec[1..].iter() {
             if min == scores_vec[1].1 && *min <= 4 {
-                println!("Current Min: {} {} {}", min, min_id, barcode);
-                println!("Ambiguous found: {} Affecting: {}", scores_vec[1].0, count);
+                // println!("Current Min: {} {} {}", min, min_id, barcode);
+                // println!("Ambiguous found: {} Affecting: {}", scores_vec[1].0, count);
                 ambiguous_reads += count;
+                assigned_barcodes.insert(barcode.clone(), "AMBIGUOUS".to_string());
             } else if *min <= 4 {
                 assigned_reads += count;
 
                 let e = id_counts.entry(min_id.clone()).or_insert(0);
                 *e += count;
+
+                assigned_barcodes.insert(barcode.clone(), min_id.clone());
             } else {
                 unassigned_reads += count;
+                assigned_barcodes.insert(barcode.clone(), "UNASSIGNED".to_string());
             }
             // }
         }
+
+        /*
 
         println!("----Finished");
         println!();
@@ -158,10 +177,70 @@ impl FastqSplitter {
         println!("----And done....");
         println!();
 
+        println!("{:#?}", assigned_barcodes); */
+
         //println!("{:#?}", hash_vec);
 
         //println!("{:#?}", counts.get("AAGCACTG+CGATGTTC"));
         //println!("{:#?}", counts.get("AACTGAGC+TCTTACGG"));
+
+        /* Split files */
+
+        assigned_barcodes
+    }
+
+    pub fn split_by_barcodes<R: Read>(
+        &self,
+        reader: R,
+        suffix: String,
+        output_directory: String,
+        assigned_barcodes: HashMap<String, String>,
+    ) {
+        let mut lines = BufReader::with_capacity(2 * 1024 * 1024, reader).byte_lines();
+
+        let mut files = HashMap::new();
+
+        fs::create_dir_all(&output_directory).expect("Unable to create directory");
+
+        for (k, i) in assigned_barcodes {
+            let file = BufWriter::new(
+                GzEncoder::new(File::create(format!("{}/{}_{}.fq.gz", output_directory, i, suffix)).unwrap(),
+                Compression::default()),
+            );
+            files.insert(k.clone(), file);
+        }
+
+        loop {
+            let header;
+            let id;
+
+            match lines.next() {
+                Some(Ok(line)) => {
+                    header = from_utf8(line)
+                        .expect("FASTQ Header line is not valid UTF-8")
+                        .clone();
+                    let n = header.len();
+
+                    id = header[n - 17..n].to_string().clone();
+
+                    if let Some(mut file) = files.get_mut(&id) {
+                        file.write_all(line).expect("Unable to write output file");
+                        writeln!(&mut file).expect("Unable to write output file");
+                        file.write_all(lines.next().unwrap().unwrap()).unwrap();
+                        writeln!(&mut file).expect("Unable to write output file");
+                        file.write_all(lines.next().unwrap().unwrap()).unwrap();
+                        writeln!(&mut file).expect("Unable to write output file");
+                        file.write_all(lines.next().unwrap().unwrap()).unwrap();
+                        writeln!(&mut file).expect("Unable to write output file");
+                    } else {
+                        println!("ID {} Not Found!", id);
+                    }
+                }
+                _ => {
+                    break;
+                }
+            };
+        }
     }
 }
 
@@ -175,6 +254,6 @@ mod tests {
         let not_really_a_fastq = String::from(
             "@MT_E00516:746:HG3WYCCX2:6:1101:2229:1661 1:N:0:NGAGCTAG+NAGCCTGA\nNTG\n+\n#AA\n",
         );
-        split_fastq_by_id(not_really_a_fastq.as_bytes(), "test");
+        // split_fastq_by_id(not_really_a_fastq.as_bytes(), "test");
     }
 }
