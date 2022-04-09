@@ -311,8 +311,8 @@ pub fn split_by_barcodes<R: Read + Send + Sync>(
                             let i1 = index_receiver1.as_ref().unwrap().recv().expect("Error with barcode 1").expect("Error with barcode 1");
                             let i2 = index_receiver2.as_ref().unwrap().recv().expect("Error with barcode 2").expect("Error with barcode 2");
 
-                            assert!(header == i1.0);
-                            assert!(header == i2.0);
+                            assert!(header.split_whitespace().next().unwrap() == i1.0.split_whitespace().next().unwrap());
+                            assert!(header.split_whitespace().next().unwrap() == i2.0.split_whitespace().next().unwrap());
 
                             id = format!("{}+{}", i1.1, i2.1);
 

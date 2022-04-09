@@ -184,7 +184,7 @@ fn main() {
                 split_by_barcodes(
                     MultiGzDecoder::new(BufReader::new(file_fh)),
                     r,
-                    "output".to_string(),
+                    output_directory.to_string(),
                     barcodes,
                     index_files,
                 );
